@@ -320,12 +320,12 @@
         <div class="model-card">
             <h2>Choose Your AI Model</h2>
             <div class="model-options">
-                <div class="model-option" onclick="selectModel('gpt')">
-                    <h3>GPT-3.5</h3>
+                <div class="model-option" onclick="selectModel('llama3.2-3b')">
+                    <h3>Llama 3.2 (3B)</h3>
                     <p>Fast and reliable for general conversations and tasks</p>
                 </div>
-                <div class="model-option" onclick="selectModel('claude')">
-                    <h3>Claude</h3>
+                <div class="model-option" onclick="selectModel('mistral-7b')">
+                    <h3>Mistral-7b</h3>
                     <p>Specialized in detailed analysis and complex reasoning</p>
                 </div>
             </div>
@@ -333,7 +333,7 @@
         </div>
     </div>
 
-    <div class="chat-interface" id="chatInterface">
+    <div class="chat-interface hidden" id="chatInterface">
         <div id="chat-messages"></div>
         <div class="input-area">
             <input type="text" id="user-input" placeholder="Type your message...">
@@ -343,7 +343,7 @@
 
     <script>
         let selectedModel = null;
-        const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+        const chatMessages = document.getElementById('chat-messages');
 
         function selectModel(model) {
             selectedModel = model;
@@ -353,56 +353,80 @@
             event.currentTarget.classList.add('selected');
         }
 
-        function formatTimestamp() {
-            const now = new Date();
-            return now.toLocaleTimeString('en-US', { 
-                hour: '2-digit', 
-                minute: '2-digit',
-                hour12: true 
-            });
-        }
-
-        function createMessageElement(content, isUser) {
-            const messageWrapper = document.createElement('div');
-            messageWrapper.className = `message-wrapper ${isUser ? 'user' : 'bot'}`;
-
-            const message = document.createElement('div');
-            message.className = `message ${isUser ? 'user-message' : 'bot-message'}`;
-            
-            const textSpan = document.createElement('span');
-            textSpan.className = 'message-text';
-            textSpan.textContent = content;
-
-            const timeSpan = document.createElement('span');
-            timeSpan.className = 'message-time';
-            timeSpan.textContent = formatTimestamp();
-
-            message.appendChild(textSpan);
-            message.appendChild(timeSpan);
-            messageWrapper.appendChild(message);
-            return messageWrapper;
-        }
-
         function startChat() {
             if (!selectedModel) {
                 alert('Please select a model first');
                 return;
             }
+            document.getElementById('modelSelection').style.display = 'none';
+            document.getElementById('chatInterface').classList.remove('hidden');
             
-            document.getElementById('modelSelection').style.animation = 'fadeOut 0.3s ease-out forwards';
-            setTimeout(() => {
-                document.getElementById('modelSelection').style.display = 'none';
-                const chatInterface = document.getElementById('chatInterface');
-                chatInterface.classList.add('active');
-                
-                // Add welcome message
-                const welcomeMessage = createMessageElement(
-                    `Welcome! You're now chatting with ${selectedModel.toUpperCase()}. How can I help you today?`,
-                    false
-                );
-                document.getElementById('chat-messages').appendChild(welcomeMessage);
-            }, 300);
+            const welcomeMessage = document.createElement('div');
+            welcomeMessage.className = 'message bot-message';
+            welcomeMessage.textContent = `Welcome! You're now chatting with ${selectedModel}. How can I help you today?`;
+            chatMessages.appendChild(welcomeMessage);
         }
+
+        async function sendMessage() {
+            const input = document.getElementById('user-input');
+            const message = input.value.trim();
+            
+            if (message && selectedModel) {
+                const userDiv = document.createElement('div');
+                userDiv.className = 'message user-message';
+                userDiv.textContent = message;
+                chatMessages.appendChild(userDiv);
+                
+                input.value = '';
+                
+                const typingDiv = document.createElement('div');
+                typingDiv.className = 'typing-indicator';
+                typingDiv.innerHTML = `
+                    <div class="dot"></div>
+                    <div class="dot"></div>
+                    <div class="dot"></div>
+                `;
+                chatMessages.appendChild(typingDiv);
+                
+                try {
+                    const response = await fetch('/process_message/', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+                        },
+                        body: JSON.stringify({
+                            message: message,
+                            model: selectedModel
+                        })
+                    });
+                    
+                    const data = await response.json();
+                    typingDiv.remove();
+                    
+                    if (data.error) {
+                        throw new Error(data.error);
+                    }
+                    
+                    const botDiv = document.createElement('div');
+                    botDiv.className = 'message bot-message';
+                    botDiv.textContent = data.response;
+                    chatMessages.appendChild(botDiv);
+                    
+                } catch (error) {
+                    console.error('Error:', error);
+                    typingDiv.textContent = 'Error processing message';
+                }
+                
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+            }
+        }
+
+        document.getElementById('user-input').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                sendMessage();
+            }
+        });
     </script>
 </body>
 </html>
