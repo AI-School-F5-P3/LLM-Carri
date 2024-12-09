@@ -11,6 +11,7 @@ from django.contrib.auth import authenticate, login, logout
 from django.contrib import messages
 from django.contrib.auth.models import User
 from django.contrib.auth.decorators import login_required
+from.models import ConversationTracker
 
 import logging
 logger = logging.getLogger(__name__)
@@ -98,6 +99,8 @@ def process_message(request):
             selected_model = data.get('model')
             session_id = data.get('session_id')
 
+            session = ChatSession.objects.get(id=data.get('session_id')) if data.get('session_id') else ChatSession.objects.create()
+
             profile = CompanyProfile.objects.get(user=request.user)
             profile_data = {
                 'company_name': profile.company_name,
@@ -131,7 +134,9 @@ def process_message(request):
                 model_mapping.get(selected_model, 'llama3.2'),
                 user_message,
                 history,
-                profile_data
+                profile_data,
+                user = request.user,
+                session = session
             )
 
             session.add_message('assistant', model_response)
@@ -148,3 +153,35 @@ def process_message(request):
             logger.error(f"Error processing message: {e}")
             return JsonResponse({'error': str(e)}, status=400)
     return JsonResponse({'error': 'Invalid request method'}, status=400)
+
+@login_required(login_url='login')
+def history_view(request):
+    # Get user's conversation history
+    conversations = ConversationTracker.objects.filter(user=request.user).order_by('-timestamp')
+    
+    # Group by session
+    sessions = {}
+    for conv in conversations:
+        if conv.session_id not in sessions:
+            sessions[conv.session_id] = {
+                'date': conv.timestamp.strftime("%Y-%m-%d"),
+                'messages': []
+            }
+        
+        try:
+            response_data = json.loads(conv.response)
+            response_text = response_data.get('text', conv.response)
+        except json.JSONDecodeError:
+            response_text = conv.response
+            
+        sessions[conv.session_id]['messages'].append({
+            'prompt': conv.prompt,
+            'response': response_text,
+            'platform': conv.platform,
+            'timestamp': conv.timestamp.strftime("%H:%M:%S"),
+            'model': conv.model_used
+        })
+    
+    return render(request, 'chat/history.html', {
+        'sessions': sessions
+    })

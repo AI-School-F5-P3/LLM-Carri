@@ -4,6 +4,10 @@ import time
 import os
 from typing import Dict, Union, Optional
 from dotenv import load_dotenv
+from langchain_core.callbacks import BaseCallbackManager
+from langchain_community.chat_message_histories import ChatMessageHistory
+from langchain_core.messages import HumanMessage, AIMessage
+from .models import ConversationTracker
 
 load_dotenv()
 
@@ -53,7 +57,8 @@ def detect_platform(prompt: str) -> str:
     
     return "general"
 
-def generate_with_model(model: str, prompt: str, history: list = None, profile_data = None) -> str:
+def generate_with_model(model: str, prompt: str, history: list = None, profile_data = None, user = None, session = None) -> str:
+    tracker = ChatModelTracker()
     url = "http://localhost:11434/api/generate"
     
     history_text = ""
@@ -206,7 +211,7 @@ Please continue the conversation while maintaining context from previous message
             image_query = parsed_content.get('image_prompt') or parsed_content.get('text').split('\n')[0]
             image_url = search_pexels_image(image_query)
             
-            return {
+            response_data = {
                 "text": parsed_content['text'],
                 "hashtags": parsed_content.get('hashtags', ''),
                 "image_url": image_url
@@ -215,10 +220,56 @@ Please continue the conversation while maintaining context from previous message
         except json.JSONDecodeError:
             # If response isn't JSON, treat as plain text
             image_url = search_pexels_image(content[:100])  # Use first 100 chars as query
-            return {
+            response_data = {
                 "text": content,
                 "image_url": image_url
             }
+        
+        if user and session:
+            tracker.track_conversation(
+                user=user,
+                session=session,
+                prompt=prompt,
+                response=json.dumps(response_data),
+                model=model,
+                platform=platform
+            )
+            
+        return response_data
                 
     except requests.exceptions.RequestException as e:
         return {"error": str(e)}
+    
+
+class ChatModelTracker:
+    def __init__(self):
+        self.message_history = ChatMessageHistory()
+        self.start_time = None
+    
+    def _track_metrics(self, **kwargs):
+        metrics = {
+            'timestamp': time.time(),
+            'generation_time': time.time() - self.start_time if self.start_time else 0,
+            'prompt_tokens': len(kwargs.get('prompt', '').split()),
+            'response_tokens': len(kwargs.get('response', '').split()),
+        }
+        return metrics
+
+    def track_conversation(self, user, session, prompt, response, model, platform):
+        self.start_time = time.time()
+        metrics = self._track_metrics(prompt=prompt, response=response)
+        
+        ConversationTracker.objects.create(
+            user=user,
+            session=session,
+            prompt=prompt,
+            response=response,
+            model_used=model,
+            platform=platform,
+            metrics=metrics
+        )
+        
+        self.message_history.add_user_message(prompt)
+        self.message_history.add_ai_message(response)
+        
+        return metrics
