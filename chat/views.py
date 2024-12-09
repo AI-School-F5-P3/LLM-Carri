@@ -1,12 +1,16 @@
 from django.shortcuts import render
 
 # Create your views here.
-from django.shortcuts import render
+from django.shortcuts import render, redirect
 from django.http import JsonResponse
-from .models import ChatSession
+from .models import ChatSession, CompanyProfile
 from django.views.decorators.csrf import csrf_exempt
 from .chat_model import generate_with_model
 import json
+from django.contrib.auth import authenticate, login, logout
+from django.contrib import messages
+from django.contrib.auth.models import User
+from django.contrib.auth.decorators import login_required
 
 import logging
 logger = logging.getLogger(__name__)
@@ -16,6 +20,54 @@ def landing_page(request):
 
 def chat_page(request):
     return render(request, 'chat/chat.html')
+
+def login_view(request):
+    if request.method == 'POST':
+        username = request.POST.get('username')
+        password = request.POST.get('password')
+        user = authenticate(request, username=username, password=password)
+        
+        if user is not None:
+            login(request, user)
+            return redirect('home')  # Change to your home view name
+        else:
+            messages.error(request, 'Invalid username or password')
+    
+    return render(request, 'chat/login.html')
+
+def signup_view(request):
+    if request.method == 'POST':
+        username = request.POST.get('username')
+        password = request.POST.get('password')
+        company_name = request.POST.get('company_name')
+        company_description = request.POST.get('company_description')
+        job_description = request.POST.get('job_description')
+
+        if User.objects.filter(username=username).exists():
+            messages.error(request, 'Username already exists')
+            return render(request, 'chat/signup.html')
+
+        user = User.objects.create_user(username=username, password=password)
+        CompanyProfile.objects.create(
+            user=user,
+            company_name=company_name,
+            company_description=company_description,
+            job_description=job_description
+        )
+        login(request, user)
+        return redirect('chat')
+
+    return render(request, 'chat/signup.html')
+
+def logout_view(request):
+    logout(request)
+    return redirect('landing')
+
+@login_required(login_url='login')
+def chat_page(request):
+    return render(request, 'chat/chat.html')
+
+@login_required(login_url='login')
 
 @csrf_exempt
 def process_message(request):

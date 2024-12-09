@@ -41,6 +41,7 @@
 
         .nav-links {
             display: flex;
+            align-items: center;
             gap: 2rem;
         }
 
@@ -53,6 +54,14 @@
 
         .nav-links a:hover {
             color: var(--accent-color);
+        }
+
+        .username {
+            color: var(--accent-color);
+            font-family: 'Orbitron', sans-serif;
+            padding: 0.5rem 1rem;
+            border: 1px solid var(--primary-color);
+            border-radius: 4px;
         }
 
         .model-selection {
@@ -349,9 +358,20 @@
 </head>
 <body>
     {% csrf_token %}
+    {% if not user.is_authenticated %}
+    <script>
+        window.location.href = "{% url 'login' %}";
+    </script>
+    {% endif %}
     <nav class="navbar">
         <div class="nav-links">
             <a href="{% url 'landing' %}">Home</a>
+            {% if user.is_authenticated %}
+                <a href="{% url 'logout' %}">Logout</a>
+                <span class="username">{{ user.username }}</span>
+            {% else %}
+                <a href="{% url 'login' %}">Login</a>
+            {% endif %}
             <a href="{% url 'chat' %}">Chat</a>
         </div>
     </nav>
