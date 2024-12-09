@@ -1,0 +1,408 @@
+{% load static %}
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Chat</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700&family=Roboto:wght@300;400;500&display=swap" rel="stylesheet">
+    <style>
+        /* Keep existing styles and add: */
+
+        :root {
+            --primary-color: #ff2a6d;
+            --secondary-color: #05d9e8;
+            --accent-color: #ffb703;
+            --dark-bg: #1a1a2e;
+            --light-text: #d1d7e0;
+            --card-bg: #2d2d44;
+            --hover-color: #7700ff;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Roboto', sans-serif;
+        }
+
+        html, body {
+            margin: 0;
+            padding: 0;
+            min-height: 100vh;
+            background-color: var(--dark-bg);
+        }
+
+        .navbar {
+            background-color: var(--dark-bg);
+            border-bottom: 2px solid var(--primary-color);
+            padding: 1rem 2rem;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 2rem;
+        }
+
+        .nav-links a {
+            color: var(--light-text);
+            font-family: 'Orbitron', sans-serif;
+            text-decoration: none;
+            font-weight: 500;
+        }
+
+        .nav-links a:hover {
+            color: var(--accent-color);
+        }
+
+        .model-selection {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(26, 26, 46, 0.95);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+
+        .model-card {
+            background: var(--card-bg);
+            padding: 2rem;
+            border-radius: 15px;
+            border: 2px solid var(--primary-color);
+            box-shadow: 0 0 25px rgba(255, 42, 109, 0.3);
+            width: 90%;
+            max-width: 500px;
+            transform: translateY(0);
+            animation: modalAppear 0.3s ease-out;
+        }
+
+        @keyframes modalAppear {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .model-card h2 {
+            color: var(--accent-color);
+            font-family: 'Orbitron', sans-serif;
+        }
+
+        .model-options {
+            display: grid;
+            gap: 1rem;
+            margin: 1.5rem 0;
+        }
+
+        .model-option {
+            padding: 1.5rem;
+            border: 2px solid var(--primary-color);
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .model-option h3 {
+            font-family: 'Orbitron', sans-serif;
+            color: var(--accent-color);
+            margin-bottom: 0.5rem;
+        }
+
+        .model-option:hover {
+            background: var(--card-bg);
+            border-color: var(--secondary-color);
+        }
+
+        .model-option.selected {
+            background: var(--primary-color);
+            border-color: var(--accent-color);
+        }
+
+        .chat-container {
+            background-color: var(--dark-bg);
+        }
+
+        .user-message {
+            background-color: var(--primary-color);
+            color: var(--light-text);
+        }
+
+        .bot-message {
+            background-color: var(--card-bg);
+            color: var(--light-text);
+            border: 1px solid var(--secondary-color);
+        }
+
+        .input-area {
+            background-color: var(--card-bg);
+        }
+
+        #user-input {
+            background-color: var(--dark-bg);
+            color: var(--light-text);
+            border: 1px solid var(--primary-color);
+        }
+
+        .send-button {
+            background-color: var(--primary-color);
+        }
+
+        .send-button:hover {
+            background-color: var(--hover-color);
+        }
+
+        .chat-interface {
+            display: flex;
+            flex-direction: column;
+            height: calc(100vh - 64px);
+            background-color: var(--dark-bg);
+        }
+
+        .chat-interface.active {
+            display: flex;
+            flex-direction: column;
+            animation: fadeIn 0.3s ease-out;
+        }
+
+        .start-chat-btn {
+            width: 100%;
+            padding: 1rem;
+            background-color: var(--primary-color);
+            color: var(--light-text);
+            border: 2px solid var(--accent-color);
+            border-radius: 8px;
+            font-family: 'Orbitron', sans-serif;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            box-shadow: 0 0 15px rgba(255, 42, 109, 0.3);
+        }
+
+        .start-chat-btn:hover {
+            background-color: var(--hover-color);
+            box-shadow: 0 0 20px rgba(119, 0, 255, 0.5);
+        }
+
+        #chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 2rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .message-wrapper {
+            display: flex;
+            margin-bottom: 1rem;
+            max-width: 80%;
+        }
+
+        .user-message {
+            margin-left: auto;
+            background-color: var(--primary-color);
+            border-radius: 15px 15px 0 15px;
+        }
+
+        .bot-message {
+            margin-right: auto;
+            background-color: var(--card-bg);
+            border: 1px solid var(--secondary-color);
+            border-radius: 15px 15px 15px 0;
+        }
+
+        .message {
+            padding: 1rem;
+            color: var(--light-text);
+            position: relative;
+            animation: messageAppear 0.3s ease-out;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        @keyframes messageAppear {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .typing-indicator {
+            display: flex;
+            gap: 0.5rem;
+            padding: 1rem;
+            background-color: var(--card-bg);
+            border-radius: 15px;
+            width: fit-content;
+        }
+
+        .dot {
+            width: 8px;
+            height: 8px;
+            background-color: var(--light-text);
+            border-radius: 50%;
+            animation: bounce 1.5s infinite;
+        }
+
+        .dot:nth-child(2) { animation-delay: 0.2s; }
+        .dot:nth-child(3) { animation-delay: 0.4s; }
+
+        @keyframes bounce {
+            0%, 60%, 100% { transform: translateY(0); }
+            30% { transform: translateY(-4px); }
+        }
+
+        .input-area {
+            padding: 1.5rem;
+            background-color: var(--card-bg);
+            border-top: 2px solid var(--primary-color);
+            display: flex;
+            gap: 1rem;
+        }
+
+        #user-input {
+            flex: 1;
+            padding: 1rem;
+            border-radius: 25px;
+            border: 2px solid var(--primary-color);
+            background-color: var(--dark-bg);
+            color: var(--light-text);
+            font-size: 1rem;
+        }
+
+        .send-button {
+            width: 45px;
+            height: 45px;
+            border-radius: 50%;
+            background-color: var(--primary-color);
+            border: none;
+            color: var(--light-text);
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2rem;
+        }
+
+        .send-button:hover {
+            background-color: var(--hover-color);
+            transform: scale(1.05);
+        }
+    </style>
+</head>
+<body>
+    {% csrf_token %}
+    <nav class="navbar">
+        <div class="nav-links">
+            <a href="{% url 'landing' %}">Home</a>
+            <a href="{% url 'chat' %}">Chat</a>
+        </div>
+    </nav>
+
+    <div class="model-selection" id="modelSelection">
+        <div class="model-card">
+            <h2>Choose Your AI Model</h2>
+            <div class="model-options">
+                <div class="model-option" onclick="selectModel('gpt')">
+                    <h3>GPT-3.5</h3>
+                    <p>Fast and reliable for general conversations and tasks</p>
+                </div>
+                <div class="model-option" onclick="selectModel('claude')">
+                    <h3>Claude</h3>
+                    <p>Specialized in detailed analysis and complex reasoning</p>
+                </div>
+            </div>
+            <button class="start-chat-btn" onclick="startChat()">Start Chat</button>
+        </div>
+    </div>
+
+    <div class="chat-interface" id="chatInterface">
+        <div id="chat-messages"></div>
+        <div class="input-area">
+            <input type="text" id="user-input" placeholder="Type your message...">
+            <button class="send-button" onclick="sendMessage()">➤</button>
+        </div>
+    </div>
+
+    <script>
+        let selectedModel = null;
+        const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+
+        function selectModel(model) {
+            selectedModel = model;
+            document.querySelectorAll('.model-option').forEach(option => {
+                option.classList.remove('selected');
+            });
+            event.currentTarget.classList.add('selected');
+        }
+
+        function formatTimestamp() {
+            const now = new Date();
+            return now.toLocaleTimeString('en-US', { 
+                hour: '2-digit', 
+                minute: '2-digit',
+                hour12: true 
+            });
+        }
+
+        function createMessageElement(content, isUser) {
+            const messageWrapper = document.createElement('div');
+            messageWrapper.className = `message-wrapper ${isUser ? 'user' : 'bot'}`;
+
+            const message = document.createElement('div');
+            message.className = `message ${isUser ? 'user-message' : 'bot-message'}`;
+            
+            const textSpan = document.createElement('span');
+            textSpan.className = 'message-text';
+            textSpan.textContent = content;
+
+            const timeSpan = document.createElement('span');
+            timeSpan.className = 'message-time';
+            timeSpan.textContent = formatTimestamp();
+
+            message.appendChild(textSpan);
+            message.appendChild(timeSpan);
+            messageWrapper.appendChild(message);
+            return messageWrapper;
+        }
+
+        function startChat() {
+            if (!selectedModel) {
+                alert('Please select a model first');
+                return;
+            }
+            
+            document.getElementById('modelSelection').style.animation = 'fadeOut 0.3s ease-out forwards';
+            setTimeout(() => {
+                document.getElementById('modelSelection').style.display = 'none';
+                const chatInterface = document.getElementById('chatInterface');
+                chatInterface.classList.add('active');
+                
+                // Add welcome message
+                const welcomeMessage = createMessageElement(
+                    `Welcome! You're now chatting with ${selectedModel.toUpperCase()}. How can I help you today?`,
+                    false
+                );
+                document.getElementById('chat-messages').appendChild(welcomeMessage);
+            }, 300);
+        }
+    </script>
+</body>
+</html>

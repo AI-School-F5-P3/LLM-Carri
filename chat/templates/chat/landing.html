@@ -1,0 +1,254 @@
+{% load static %}
+<!DOCTYPE html>
+<html>
+<head>
+    <title>AI Chat Assistant</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700&family=Roboto:wght@300;400;500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary-color: #ff2a6d;
+            --secondary-color: #05d9e8;
+            --accent-color: #ffb703;
+            --dark-bg: #1a1a2e;
+            --light-text: #d1d7e0;
+            --card-bg: #2d2d44;
+            --hover-color: #7700ff;
+        }
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Roboto', sans-serif;
+        }
+
+        html, body {
+            margin: 0;
+            padding: 0;
+            min-height: 100vh;
+            background-color: var(--dark-bg);
+        }
+
+        .navbar {
+            background-color: var(--dark-bg);
+            border-bottom: 2px solid var(--primary-color);
+            padding: 1rem 2rem;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 2rem;
+        }
+
+        .nav-links a {
+            color: var(--light-text);
+            font-family: 'Orbitron', sans-serif;
+            text-decoration: none;
+            font-weight: 500;
+            gap: 2rem;
+        }
+
+        .nav-links a:hover {
+            color: var(--accent-color);
+        }
+
+        .banner {
+            background: linear-gradient(45deg, var(--dark-bg), var(--card-bg));
+            padding: 2rem;
+            text-align: center;
+            border-bottom: 3px solid var(--primary-color);
+        }
+
+        .banner h1 {
+            font-family: 'Orbitron', sans-serif;
+            color: var(--accent-color);
+            font-size: 3.5rem;
+            text-transform: uppercase;
+            text-shadow: 0 0 10px var(--primary-color);
+            margin: 0;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .hero-section h1 {
+            color: var(--secondary-color);
+            font-family: 'Orbitron', sans-serif;
+        }
+
+        .hero-section p {
+            color: var(--light-text);
+        }
+
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+            padding: 2rem 0;
+        }
+
+        .feature-card {
+            background: var(--card-bg);
+            padding: 2rem;
+            border: 1px solid var(--primary-color);
+            border-radius: 15px;
+            box-shadow: 0 0 15px rgba(255, 42, 109, 0.3);
+        }
+
+        .feature-card h3 {
+            color: var(--accent-color);
+            font-family: 'Orbitron', sans-serif;
+            margin-bottom: 1rem;
+        }
+
+        .feature-card p {
+            color: var(--light-text);
+        }
+
+        .cta-button-container {
+            width: 100%;
+            text-align: center;
+            margin-top: 2rem;
+        }
+
+        .cta-button {
+            display: inline-block;
+            padding: 1rem 2rem;
+            background-color: var(--primary-color);
+            color: var(--light-text);
+            text-decoration: none;
+            border: 2px solid var(--accent-color);
+            border-radius: 8px;
+            font-family: 'Orbitron', sans-serif;
+            font-weight: 500;
+            transition: background-color 0.3s;
+        }
+
+        .cta-button:hover {
+            background-color: var(--hover-color);
+        }
+
+        /* Chat page specific updates */
+        .chat-container {
+            background-color: var(--dark-bg);
+        }
+
+        .model-selection {
+            background: rgba(26, 26, 46, 0.9);
+        }
+
+        .model-card {
+            background: var(--card-bg);
+            border: 2px solid var(--primary-color);
+        }
+
+        .model-card h2 {
+            color: var(--accent-color);
+            font-family: 'Orbitron', sans-serif;
+        }
+
+        .model-option {
+            border: 2px solid var(--primary-color);
+            background: var(--dark-bg);
+            color: var(--light-text);
+        }
+
+        .model-option:hover {
+            background: var(--card-bg);
+            border-color: var(--secondary-color);
+        }
+
+        .model-option.selected {
+            background: var(--primary-color);
+            border-color: var(--accent-color);
+        }
+
+        .user-message {
+            background-color: var(--primary-color);
+            color: var(--light-text);
+        }
+
+        .bot-message {
+            background-color: var(--card-bg);
+            color: var(--light-text);
+            border: 1px solid var(--secondary-color);
+        }
+
+        .input-area {
+            background-color: var(--card-bg);
+        }
+
+        #user-input {
+            background-color: var(--dark-bg);
+            color: var(--light-text);
+            border: 1px solid var(--primary-color);
+        }
+
+        .send-button {
+            background-color: var(--primary-color);
+        }
+
+        .send-button:hover {
+            background-color: var(--hover-color);
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 1rem;
+            }
+            
+            .hero-section h1 {
+                font-size: 2rem;
+            }
+            
+            .features-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-links">
+            <a href="{% url 'landing' %}">Home</a>
+            <a href="{% url 'chat' %}">Chat</a>
+        </div>
+    </nav>
+    <div class="banner">
+        <h1>carrIA</h1>
+    </div>
+    <div class="container">
+        <div class="hero-section">
+            <h1>Welcome to AI Chat Assistant</h1>
+            <p>Experience the power of advanced AI conversation with multiple language models at your fingertips.</p>
+        </div>
+        <div class="features-grid">
+            <div class="feature-card">
+                <h3>Multiple AI Models</h3>
+                <p>Choose between different AI models like GPT-3.5 and Claude for varied conversation experiences.</p>
+            </div>
+            <div class="feature-card">
+                <h3>Natural Conversations</h3>
+                <p>Engage in fluid, context-aware discussions with state-of-the-art language models.</p>
+            </div>
+            <div class="feature-card">
+                <h3>Easy to Use</h3>
+                <p>Simple and intuitive interface designed for seamless interaction with AI assistants.</p>
+            </div>
+            <div class="feature-card">
+                <h3>Easy to Use</h3>
+                <p>Simple and intuitive interface designed for seamless interaction with AI assistants.</p>
+            </div>
+        </div>
+        <div class="cta-button-container">
+            <a href="{% url 'chat' %}" class="cta-button">Start Chatting</a>
+        </div>
+    </div>
+</body>
+</html>
