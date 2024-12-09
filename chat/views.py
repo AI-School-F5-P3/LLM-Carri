@@ -68,6 +68,24 @@ def chat_page(request):
     return render(request, 'chat/chat.html')
 
 @login_required(login_url='login')
+def profile_view(request):
+    profile = CompanyProfile.objects.get(user=request.user)
+    
+    if request.method == 'POST':
+        # Update user data
+        request.user.username = request.POST.get('username').lower()
+        request.user.save()
+        
+        # Update profile data
+        profile.company_name = request.POST.get('company_name')
+        profile.company_description = request.POST.get('company_description')
+        profile.job_description = request.POST.get('job_description')
+        profile.save()
+        
+        messages.success(request, 'Profile updated successfully')
+        return redirect('profile')
+        
+    return render(request, 'chat/profile.html', {'profile': profile})
 
 @csrf_exempt
 def process_message(request):
