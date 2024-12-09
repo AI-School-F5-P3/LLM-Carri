@@ -1,12 +1,16 @@
 from django.db import models
+import json
 
-# Create your models here.
 class ChatSession(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     model_choice = models.CharField(max_length=50)
+    conversation_history = models.TextField(default='[]')  # Store as JSON string
 
-class Message(models.Model):
-    session = models.ForeignKey(ChatSession, on_delete=models.CASCADE)
-    content = models.TextField()
-    is_user = models.BooleanField()
-    timestamp = models.DateTimeField(auto_now_add=True)
+    def add_message(self, role: str, content: str):
+        history = json.loads(self.conversation_history)
+        history.append({"role": role, "content": content})
+        self.conversation_history = json.dumps(history)
+        self.save()
+
+    def get_history(self):
+        return json.loads(self.conversation_history)

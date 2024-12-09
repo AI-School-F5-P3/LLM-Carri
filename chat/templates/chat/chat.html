@@ -343,6 +343,7 @@
 
     <script>
         let selectedModel = null;
+        let sessionId = null;
         const chatMessages = document.getElementById('chat-messages');
 
         function selectModel(model) {
@@ -387,6 +388,12 @@
                     <div class="dot"></div>
                 `;
                 chatMessages.appendChild(typingDiv);
+
+                const payload = {
+                    message: message,
+                    model: selectedModel,
+                    session_id: sessionId
+                };
                 
                 try {
                     const response = await fetch('/process_message/', {
@@ -395,17 +402,24 @@
                             'Content-Type': 'application/json',
                             'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
                         },
-                        body: JSON.stringify({
-                            message: message,
-                            model: selectedModel
-                        })
+                        body: JSON.stringify(payload)
                     });
+
+                    if (!response.ok) {
+                        const errorData = await response.json();
+                        throw new Error(errorData.error || 'Server error');
+                    }
                     
                     const data = await response.json();
+                    console.log('Response:', data); // Debug log
                     typingDiv.remove();
                     
                     if (data.error) {
                         throw new Error(data.error);
+                    }
+
+                    if (data.session_id) {
+                        sessionId = data.session_id;
                     }
                     
                     const botDiv = document.createElement('div');
@@ -415,6 +429,7 @@
                     
                 } catch (error) {
                     console.error('Error:', error);
+                    alert(`Error: ${error.message}`);
                     typingDiv.textContent = 'Error processing message';
                 }
                 
