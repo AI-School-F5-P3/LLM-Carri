@@ -1,0 +1,197 @@
+{% load static %}
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Sign Up - CarrIA</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700&family=Roboto:wght@300;400;500&display=swap" rel="stylesheet">
+    <style>
+        /* Copy root variables and base styles from landing.html */
+        :root {
+            --primary-color: #ff2a6d;
+            --secondary-color: #05d9e8;
+            --accent-color: #ffb703;
+            --dark-bg: #1a1a2e;
+            --light-text: #d1d7e0;
+            --card-bg: #2d2d44;
+            --hover-color: #7700ff;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Roboto', sans-serif;
+        }
+
+        html, body {
+            margin: 0;
+            padding: 0;
+            min-height: 100vh;
+            background-color: var(--dark-bg);
+        }
+
+        .banner {
+            background: linear-gradient(45deg, var(--dark-bg), var(--card-bg));
+            padding: 2rem;
+            text-align: center;
+            border-bottom: 3px solid var(--primary-color);
+        }
+
+        .banner h1 {
+            font-family: 'Orbitron', sans-serif;
+            color: var(--accent-color);
+            font-size: 3.5rem;
+            text-transform: uppercase;
+            text-shadow: 0 0 10px var(--primary-color);
+            margin: 0;
+        }
+
+        .login-container {
+            max-width: 600px;
+            margin: 2rem auto;
+            padding: 2rem;
+            background: var(--card-bg);
+            border-radius: 15px;
+            border: 2px solid var(--primary-color);
+            box-shadow: 0 0 25px rgba(255, 42, 109, 0.3);
+            animation: modalAppear 0.3s ease-out;
+        }
+
+        @keyframes modalAppear {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+
+        .form-group label {
+            display: block;
+            color: var(--accent-color);
+            font-family: 'Orbitron', sans-serif;
+            margin-bottom: 0.5rem;
+        }
+
+        .form-group input,
+        .form-group textarea {
+            width: 100%;
+            padding: 1rem;
+            background: var(--dark-bg);
+            border: 2px solid var(--primary-color);
+            border-radius: 8px;
+            color: var(--light-text);
+            font-size: 1rem;
+            transition: all 0.3s ease;
+        }
+
+        .form-group textarea {
+            min-height: 100px;
+            resize: vertical;
+        }
+
+        .form-group input:focus,
+        .form-group textarea:focus {
+            outline: none;
+            border-color: var(--accent-color);
+            box-shadow: 0 0 15px rgba(255, 42, 109, 0.2);
+        }
+
+        .submit-btn {
+            width: 100%;
+            padding: 1rem;
+            background-color: var(--primary-color);
+            color: var(--light-text);
+            border: 2px solid var(--accent-color);
+            border-radius: 8px;
+            font-family: 'Orbitron', sans-serif;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            box-shadow: 0 0 15px rgba(255, 42, 109, 0.3);
+        }
+
+        .submit-btn:hover {
+            background-color: var(--hover-color);
+            box-shadow: 0 0 20px rgba(119, 0, 255, 0.5);
+        }
+
+        .navbar {
+            background-color: var(--dark-bg);
+            border-bottom: 2px solid var(--primary-color);
+            padding: 1rem 2rem;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 2rem;
+        }
+
+        .nav-links a {
+            color: var(--light-text);
+            font-family: 'Orbitron', sans-serif;
+            text-decoration: none;
+            font-weight: 500;
+            transition: color 0.3s ease;
+        }
+
+        .nav-links a:hover {
+            color: var(--accent-color);
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-links">
+            <a href="{% url 'landing' %}">Home</a>
+            <a href="{% url 'login' %}">Login</a>
+            <a href="{% url 'chat' %}">Chat</a>
+        </div>
+    </nav>
+    
+    <div class="banner">
+        <h1>carrIA</h1>
+    </div>
+
+    <div class="login-container">
+        <form method="POST" action="{% url 'signup' %}">
+            {% csrf_token %}
+            <div class="form-group">
+                <label>Username</label>
+                <input type="text" name="username" required>
+            </div>
+            <div class="form-group">
+                <label>Password</label>
+                <input type="password" name="password" required>
+            </div>
+            <div class="form-group">
+                <label>Company Name</label>
+                <input type="text" name="company_name" required>
+            </div>
+            <div class="form-group">
+                <label>Company Description</label>
+                <textarea name="company_description" required></textarea>
+            </div>
+            <div class="form-group">
+                <label>Job Description</label>
+                <textarea name="job_description" required></textarea>
+            </div>
+            <button type="submit" class="submit-btn">Sign Up</button>
+        </form>
+        {% if messages %}
+            {% for message in messages %}
+                <div class="alert">{{ message }}</div>
+            {% endfor %}
+        {% endif %}
+    </div>
+</body>
+</html>
