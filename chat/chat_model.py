@@ -1,6 +1,37 @@
 import requests
 import json
 import time
+import os
+from typing import Dict, Union, Optional
+from dotenv import load_dotenv
+
+load_dotenv()
+
+def search_pexels_image(query: str) -> Optional[str]:
+    PEXELS_API_KEY = os.getenv("PEXELS_API_KEY")
+    if not PEXELS_API_KEY:
+        print("Warning: PEXELS_API_KEY not found in .env")
+        return None
+    
+    headers = {
+        "Authorization": PEXELS_API_KEY
+    }
+
+    try:
+        response = requests.get(
+            f'https://api.pexels.com/v1/search?query={query}&per_page=1',
+            headers = headers
+        )
+        response.raise_for_status()
+
+        data = response.json()
+        if data["photos"]:
+            return data["photos"][0]["src"]["original"]
+        return None
+    except requests.exceptions.RequestException:
+        return None
+
+
 
 def detect_platform(prompt: str) -> str:
     # Platform keywords dictionary
@@ -33,57 +64,104 @@ def generate_with_model(model: str, prompt: str, history: list = None) -> str:
 
     # Platform-specific prompt templates
     PLATFORM_TEMPLATES = {
-        "twitter": """You are a social media expert specialized in Twitter/X posts.
-        Create engaging content that:
-        - Fits within character limits
-        - Uses appropriate hashtags
-        - Has a conversational tone
-        - Encourages engagement
-        - Is trendy and relevant
-        Format: Main text + Hashtags""",
-        
-        "instagram": """You are an Instagram content creator.
-        Create engaging content that:
-        - Has an attention-grabbing first line
-        - Uses storytelling elements
-        - Includes relevant emoji
-        - Has structured paragraphs
-        - Ends with a call to action
-        - Includes hashtag suggestions
-        Format: Caption + Hashtags (separated)""",
+        "twitter": """You are a social media expert for Twitter/X posts.
+        Create engaging content following this format:
+        {
+            "text": "Main tweet content (max 280 chars)",
+            "hashtags": "space-separated hashtags (max 3)",
+            "image_prompt": "description for image generation"
+        }
+        Guidelines:
+        - Use emojis sparingly (1-2 max)
+        - Include line breaks with \n
+        - Create viral-style hooks
+        - Keep it concise""",
         
         "linkedin": """You are a professional LinkedIn content strategist.
-        Create content that:
-        - Starts with a hook
-        - Shares professional insights
-        - Uses business-appropriate tone
-        - Includes industry expertise
-        - Encourages professional discussion
-        - Ends with a thought-provoking question
-        Format: Professional post with paragraphs""",
+        Create content following this exact format:
+        {
+            "text": "Post content with following structure:
+            • Hook (1-2 lines)
+            \n\n
+            🎯 Main Point
+            [2-3 paragraphs with professional insights]
+            \n\n
+            💡 Key Takeaways:
+            • Bullet point 1
+            • Bullet point 2
+            • Bullet point 3
+            \n\n
+            🤔 Thought-provoking question
+            \n\n
+            [Call to action]",
+            "hashtags": "3-5 professional hashtags",
+            "image_prompt": "professional image description"
+        }""",
+        
+        "instagram": """You are an Instagram content creator.
+        Create content following this format:
+        {
+            "text": "Caption with structure:
+            ✨ Attention-grabbing first line
+            \n\n
+            [Main content with emojis]
+            \n\n
+            💫 Key points:
+            • Point 1
+            • Point 2
+            • Point 3
+            \n\n
+            [Call to action + question]",
+            "hashtags": "up to 30 relevant hashtags",
+            "image_prompt": "instagram-worthy image description"
+        }""",
         
         "facebook": """You are a Facebook content creator.
-        Create engaging content that:
-        - Is personal and relatable
-        - Encourages comments and shares
-        - Uses appropriate emoji
-        - Includes call to action
-        Format: Post with engaging question""",
+        Create content following this format:
+        {
+            "text": "Post with structure:
+            [Engaging opening]
+            \n\n
+            [Story or main content with emojis]
+            \n\n
+            👉 Key message
+            \n\n
+            [Question to encourage comments]",
+            "hashtags": "2-3 relevant hashtags",
+            "image_prompt": "shareable image description"
+        }""",
         
         "tiktok": """You are a TikTok content strategist.
-        Create script/content that:
-        - Has a hook in first 3 seconds
-        - Is trendy and engaging
-        - Uses popular audio references
-        - Includes hashtag suggestions
-        Format: Script + Hashtags""",
+        Create content following this format:
+        {
+            "text": "Script format:
+            🎬 Hook (3 seconds):
+            [Attention grabber]
+            \n\n
+            📱 Main Content:
+            [Point 1] ⚡
+            [Point 2] 💫
+            [Point 3] 🔥
+            \n\n
+            🎵 Sound suggestion: [trending sound type]
+            \n\n
+            [Call to action]",
+            "hashtags": "3-5 trending hashtags",
+            "image_prompt": "vertical format thumbnail description"
+        }""",
         
         "general": """You are a versatile social media content creator.
-        Create engaging content that:
-        - Is clear and concise
-        - Uses appropriate tone
-        - Engages the audience
-        - Includes relevant hashtags"""
+        Create content following this format:
+        {
+            "text": "Content with structure:
+            [Engaging title]
+            \n\n
+            [Main content with appropriate formatting]
+            \n\n
+            [Call to action]",
+            "hashtags": "relevant hashtags",
+            "image_prompt": "appropriate image description"
+        }"""
     }
     
     # Detect platform from prompt
@@ -108,6 +186,28 @@ Please continue the conversation while maintaining context from previous message
     try:
         response = requests.post(url, json=payload)
         response.raise_for_status()
-        return response.json()['response']
+        content =  response.json()['response']
+    
+        try:
+            parsed_content = json.loads(content)
+            
+            # Search for image based on image_prompt or text content
+            image_query = parsed_content.get('image_prompt') or parsed_content.get('text').split('\n')[0]
+            image_url = search_pexels_image(image_query)
+            
+            return {
+                "text": parsed_content['text'],
+                "hashtags": parsed_content.get('hashtags', ''),
+                "image_url": image_url
+            }
+                
+        except json.JSONDecodeError:
+            # If response isn't JSON, treat as plain text
+            image_url = search_pexels_image(content[:100])  # Use first 100 chars as query
+            return {
+                "text": content,
+                "image_url": image_url
+            }
+                
     except requests.exceptions.RequestException as e:
-        return f"Error: {str(e)}"
+        return {"error": str(e)}

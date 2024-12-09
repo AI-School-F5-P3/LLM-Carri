@@ -4,6 +4,7 @@
 <head>
     <title>Chat</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="shortcut icon" type="image/x-icon" href="{% static 'images/favicon.ico' %}">
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700&family=Roboto:wght@300;400;500&display=swap" rel="stylesheet">
     <style>
         /* Keep existing styles and add: */
@@ -305,6 +306,45 @@
             background-color: var(--hover-color);
             transform: scale(1.05);
         }
+
+        .message-text {
+            margin-bottom: 0.5rem;
+            white-space: pre-wrap;
+        }
+
+        .message-hashtags {
+            color: var(--secondary-color);
+            font-size: 0.9rem;
+            margin-top: 0.5rem;
+        }
+
+        .message-image-container {
+            margin-top: 1rem;
+            max-width: 100%;
+            display: flex;
+            justify-content: center;
+        }
+
+        .message-image {
+            max-width: 400px; /* Standard size for desktop */
+            width: 100%;
+            height: auto;
+            border-radius: 8px;
+            border: 1px solid var(--primary-color);
+            object-fit: cover;
+        }
+
+        @media (max-width: 768px) {
+            .message-image {
+                max-width: 300px; /* Smaller size for tablets */
+            }
+        }
+
+        @media (max-width: 480px) {
+            .message-image {
+                max-width: 250px; /* Even smaller for mobile */
+            }
+        }
     </style>
 </head>
 <body>
@@ -345,7 +385,7 @@
         let selectedModel = null;
         let sessionId = null;
         const chatMessages = document.getElementById('chat-messages');
-
+    
         function selectModel(model) {
             selectedModel = model;
             document.querySelectorAll('.model-option').forEach(option => {
@@ -353,7 +393,7 @@
             });
             event.currentTarget.classList.add('selected');
         }
-
+    
         function startChat() {
             if (!selectedModel) {
                 alert('Please select a model first');
@@ -367,12 +407,53 @@
             welcomeMessage.textContent = `Welcome! You're now chatting with ${selectedModel}. How can I help you today?`;
             chatMessages.appendChild(welcomeMessage);
         }
-
+    
+        async function displayModelResponse(data) {
+            const botDiv = document.createElement('div');
+            botDiv.className = 'message bot-message';
+            
+            try {
+                const textDiv = document.createElement('div');
+                textDiv.className = 'message-text';
+                
+                const content = typeof data.response === 'string' ? 
+                    JSON.parse(data.response) : data.response;
+                
+                textDiv.innerHTML = content.text.replace(/\n/g, '<br>');
+                botDiv.appendChild(textDiv);
+                
+                if (content.hashtags) {
+                    const hashtagDiv = document.createElement('div');
+                    hashtagDiv.className = 'message-hashtags';
+                    hashtagDiv.textContent = content.hashtags;
+                    botDiv.appendChild(hashtagDiv);
+                }
+                
+                if (content.image_url) {
+                    const imgDiv = document.createElement('div');
+                    imgDiv.className = 'message-image-container';
+                    const img = document.createElement('img');
+                    img.src = content.image_url;
+                    img.className = 'message-image';
+                    img.alt = 'Generated content image';
+                    imgDiv.appendChild(img);
+                    botDiv.appendChild(imgDiv);
+                }
+                
+            } catch (error) {
+                botDiv.textContent = data.response;
+            }
+            
+            chatMessages.appendChild(botDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+    
         async function sendMessage() {
             const input = document.getElementById('user-input');
             const message = input.value.trim();
             
             if (message && selectedModel) {
+                // Display user message
                 const userDiv = document.createElement('div');
                 userDiv.className = 'message user-message';
                 userDiv.textContent = message;
@@ -380,6 +461,7 @@
                 
                 input.value = '';
                 
+                // Add typing indicator
                 const typingDiv = document.createElement('div');
                 typingDiv.className = 'typing-indicator';
                 typingDiv.innerHTML = `
@@ -388,12 +470,6 @@
                     <div class="dot"></div>
                 `;
                 chatMessages.appendChild(typingDiv);
-
-                const payload = {
-                    message: message,
-                    model: selectedModel,
-                    session_id: sessionId
-                };
                 
                 try {
                     const response = await fetch('/process_message/', {
@@ -402,41 +478,36 @@
                             'Content-Type': 'application/json',
                             'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
                         },
-                        body: JSON.stringify(payload)
+                        body: JSON.stringify({
+                            message: message,
+                            model: selectedModel,
+                            session_id: sessionId
+                        })
                     });
-
-                    if (!response.ok) {
-                        const errorData = await response.json();
-                        throw new Error(errorData.error || 'Server error');
-                    }
                     
                     const data = await response.json();
-                    console.log('Response:', data); // Debug log
                     typingDiv.remove();
                     
                     if (data.error) {
                         throw new Error(data.error);
                     }
-
+                    
                     if (data.session_id) {
                         sessionId = data.session_id;
                     }
                     
-                    const botDiv = document.createElement('div');
-                    botDiv.className = 'message bot-message';
-                    botDiv.textContent = data.response;
-                    chatMessages.appendChild(botDiv);
+                    await displayModelResponse(data);
                     
                 } catch (error) {
                     console.error('Error:', error);
-                    alert(`Error: ${error.message}`);
                     typingDiv.textContent = 'Error processing message';
                 }
                 
                 chatMessages.scrollTop = chatMessages.scrollHeight;
             }
         }
-
+    
+        // Add event listener for Enter key
         document.getElementById('user-input').addEventListener('keypress', function(e) {
             if (e.key === 'Enter') {
                 sendMessage();
