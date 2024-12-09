@@ -98,6 +98,13 @@ def process_message(request):
             selected_model = data.get('model')
             session_id = data.get('session_id')
 
+            profile = CompanyProfile.objects.get(user=request.user)
+            profile_data = {
+                'company_name': profile.company_name,
+                'company_description': profile.company_description,
+                'job_description': profile.job_description
+            }
+
             if not user_message or not selected_model:
                 return JsonResponse({
                     'error': 'Missing required fields: message and model'
@@ -123,7 +130,8 @@ def process_message(request):
             model_response = generate_with_model(
                 model_mapping.get(selected_model, 'llama3.2'),
                 user_message,
-                history
+                history,
+                profile_data
             )
 
             session.add_message('assistant', model_response)

@@ -53,7 +53,7 @@ def detect_platform(prompt: str) -> str:
     
     return "general"
 
-def generate_with_model(model: str, prompt: str, history: list = None) -> str:
+def generate_with_model(model: str, prompt: str, history: list = None, profile_data = None) -> str:
     url = "http://localhost:11434/api/generate"
     
     history_text = ""
@@ -61,6 +61,17 @@ def generate_with_model(model: str, prompt: str, history: list = None) -> str:
         history_text = "\n\nPrevious conversation:\n"
         for msg in history:
             history_text += f"{msg['role']}: {msg['content']}\n"
+
+    profile_context = ""
+    if profile_data:
+        profile_context = f"""
+        Company Context:
+        - Company Name: {profile_data['company_name']}
+        - Company Description: {profile_data['company_description']}
+        - Job Description: {profile_data['job_description']}
+        
+        Please consider this company context when generating responses.
+        """
 
     # Platform-specific prompt templates
     PLATFORM_TEMPLATES = {
@@ -170,7 +181,7 @@ def generate_with_model(model: str, prompt: str, history: list = None) -> str:
     # Get template and combine with prompt
     system_prompt = PLATFORM_TEMPLATES.get(platform, PLATFORM_TEMPLATES["general"])
     full_prompt = f"""{system_prompt}
-    
+{profile_context}
 {history_text}
 
 Current request: {prompt}
