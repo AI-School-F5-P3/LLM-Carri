@@ -1,6 +1,8 @@
 # LITA
 
-<img src="./assets/lita-logo.png" alt="LITA Logo" width="600"/>
+<p align="center">
+    <img src="./assets/lita-logo.png" alt="LITA" width="600"/>
+</p>
 
 Welcome to **lItA**, the ultimate AI-powered social media content creation tool designed to revolutionize your online presence. Our web app leverages cutting-edge language models to generate engaging, high-quality content tailored to your specific needs. Whether you're a social media manager, a content creator, or a business owner, lItA is here to elevate your social media game.
 
@@ -36,5 +38,5 @@ Ready to transform your social media presence? [Start Chatting](#) with lItA tod
 Join the revolution and let lItA take your social media strategy to the next level!
 
 <p align="center">
-    <img src="./assets/lita.png" alt="LITA" width="100"/>
+    <img src="./assets/lita.png" alt="LITA" width="300"/>
 </p>
