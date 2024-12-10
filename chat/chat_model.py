@@ -2,12 +2,14 @@ import requests
 import json
 import time
 import os
+import yfinance as yf
 from typing import Dict, Union, Optional
 from dotenv import load_dotenv
 from langchain_core.callbacks import BaseCallbackManager
 from langchain_community.chat_message_histories import ChatMessageHistory
 from langchain_core.messages import HumanMessage, AIMessage
 from .models import ConversationTracker
+from datetime import datetime, timedelta
 
 load_dotenv()
 
@@ -35,6 +37,25 @@ def search_pexels_image(query: str) -> Optional[str]:
     except requests.exceptions.RequestException:
         return None
 
+def get_stock_data(symbol: str) -> Dict:
+    """Fetch stock market data using yfinance"""
+    try:
+        stock = yf.Ticker(symbol)
+        info = stock.info
+        history = stock.history(period="1d")
+        
+        return {
+            "symbol": symbol,
+            "name": info.get('longName', symbol),
+            "price": history['Close'].iloc[-1],
+            "change": history['Close'].iloc[-1] - history['Open'].iloc[0],
+            "change_percent": ((history['Close'].iloc[-1] - history['Open'].iloc[0]) / history['Open'].iloc[0]) * 100,
+            "volume": info.get('volume', 0),
+            "market_cap": info.get('marketCap', 0),
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
+    except Exception as e:
+        return {"error": f"Could not fetch data for {symbol}: {str(e)}"}
 
 
 def detect_platform(prompt: str) -> str:
@@ -44,11 +65,19 @@ def detect_platform(prompt: str) -> str:
         "instagram": ["instagram", "insta", "ig", "reels"],
         "linkedin": ["linkedin", "professional", "business network"],
         "facebook": ["facebook", "fb", "meta", "facebook post"],
-        "tiktok": ["tiktok", "tik tok", "short video"]
+        "tiktok": ["tiktok", "tik tok", "short video"],
+        "financial": ["stock", "market", "trading", "price", "shares", "ticker", 
+                     "nasdaq", "nyse", "dow", "sp500", "financial"]
     }
     
     # Convert prompt to lowercase for case-insensitive matching
     prompt_lower = prompt.lower()
+
+    if any(keyword in prompt_lower for keyword in PLATFORM_KEYWORDS["financial"]):
+        # Extract stock symbols (assumed to be in $SYMBOL format)
+        symbols = [word.strip('$') for word in prompt.split() if word.startswith('$')]
+        if symbols:
+            return "financial"
     
     # Check for platform mentions
     for platform, keywords in PLATFORM_KEYWORDS.items():
@@ -177,6 +206,28 @@ def generate_with_model(model: str, prompt: str, history: list = None, profile_d
             [Call to action]",
             "hashtags": "relevant hashtags",
             "image_prompt": "appropriate image description"
+        }""", 
+        "financial": """You are a financial market expert.
+        Create content following this format:
+        {
+            "text": "Market analysis with structure:
+            📊 Market Update
+            [Latest price and changes]
+            \n\n
+            📈 Technical Analysis
+            [Key technical indicators and patterns]
+            \n\n
+            💡 Key Insights:
+            • Point 1
+            • Point 2
+            • Point 3
+            \n\n
+            ⚠️ Risks and Considerations
+            [Key risk factors]
+            \n\n
+            [Disclaimer]",
+            "hashtags": "relevant financial hashtags",
+            "image_prompt": "stock chart or financial visualization"
         }"""
     }
     
@@ -189,9 +240,19 @@ def generate_with_model(model: str, prompt: str, history: list = None, profile_d
 {profile_context}
 {history_text}
 
+
 Current request: {prompt}
 
 Please continue the conversation while maintaining context from previous messages."""
+    
+    if platform == "financial":
+        symbols = [word.strip('$') for word in prompt.split() if word.startswith('$')]
+        market_data = {}
+        for symbol in symbols:
+            market_data[symbol] = get_stock_data(symbol)
+        
+        # Add market data to prompt
+        full_prompt += f"\n\nCurrent Market Data:\n{json.dumps(market_data, indent=2)}"
     
     payload = {
         "model": model,
