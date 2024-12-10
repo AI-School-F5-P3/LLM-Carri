@@ -9,7 +9,7 @@ Welcome to **lItA**, the ultimate AI-powered social media content creation tool 
 ## Key Features
 
 ### Multiple AI Models
-Choose from a variety of advanced AI models like Llama 3.2 and Mistral to generate content that resonates with your audience. Our models are trained to understand and mimic human-like writing, ensuring your posts are both engaging and authentic.
+Choose from a variety of advanced AI models like Llama 3.2 (3B) and Mistral to generate content that resonates with your audience. Our models are trained to understand and mimic human-like writing, ensuring your posts are both engaging and authentic.
 
 ### Natural Content Generation
 Our AI models craft social media content that feels natural and human-like. From catchy tweets to professional LinkedIn posts, lItA ensures your content stands out in the crowded social media landscape.
