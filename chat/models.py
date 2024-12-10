@@ -41,3 +41,14 @@ class ConversationTracker(models.Model):
 
     class Meta:
         ordering = ['-timestamp']
+
+class ScientificArticle(models.Model):
+    title = models.CharField(max_length=500)
+    abstract = models.TextField()
+    authors = models.JSONField()
+    arxiv_id = models.CharField(max_length=50, unique=True)
+    categories = models.JSONField()
+    vector_embedding = models.JSONField(null=True)
+    added_date = models.DateTimeField(auto_now_add=True)
+
+
