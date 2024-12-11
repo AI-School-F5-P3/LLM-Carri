@@ -273,7 +273,8 @@ def generate_with_model(model: str, prompt: str, history: list = None, profile_d
     # Inicializa el validador de contenido y el rastreador de chat
     validator = ContentValidator()
     tracker = ChatModelTracker()
-    url = "http://localhost:11434/api/generate"
+    ollama_host = os.getenv('OLLAMA_HOST', 'http://localhost:11434')
+    url = f"{ollama_host}/api/generate"
     max_retries = 3
     
     # Procesa el historial de conversación si existe
