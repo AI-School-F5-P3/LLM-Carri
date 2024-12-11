@@ -1,15 +1,18 @@
+<!-- Carga los archivos estáticos de Django -->
 {% load static %}
 <!DOCTYPE html>
 <html>
 <head>
     <title>Chat</title>
+    <!-- Biblioteca D3.js para visualización de grafos -->
     <script src="https://d3js.org/d3.v7.min.js"></script>
+    <!-- Configuración de viewport para responsividad -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- Favicon y fuentes personalizadas -->
     <link rel="shortcut icon" type="image/x-icon" href="{% static 'images/favicon.ico' %}">
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700&family=Roboto:wght@300;400;500&display=swap" rel="stylesheet">
     <style>
-        /* Keep existing styles and add: */
-
+        /* Variables globales de colores y temas */
         :root {
             --primary-color: #ff2a6d;
             --secondary-color: #05d9e8;
@@ -20,6 +23,7 @@
             --hover-color: #7700ff;
         }
         
+        /* Estilos base y reset */
         * {
             margin: 0;
             padding: 0;
@@ -90,6 +94,7 @@
             animation: modalAppear 0.3s ease-out;
         }
 
+        /* Animaciones para elementos de la interfaz */
         @keyframes modalAppear {
             from {
                 opacity: 0;
@@ -388,12 +393,15 @@
     </style>
 </head>
 <body>
+    <!-- Token CSRF de Django para seguridad -->
     {% csrf_token %}
+    <!-- Redirección si el usuario no está autenticado -->
     {% if not user.is_authenticated %}
     <script>
         window.location.href = "{% url 'login' %}";
     </script>
     {% endif %}
+    <!-- Barra de navegación -->
     <nav class="navbar">
         <div class="nav-links">
             <a href="{% url 'landing' %}">Home</a>
@@ -409,6 +417,7 @@
         </div>
     </nav>
 
+    <!-- Modal de selección de modelo AI -->
     <div class="model-selection" id="modelSelection">
         <div class="model-card">
             <h2>Choose Your AI Model</h2>
@@ -426,6 +435,7 @@
         </div>
     </div>
 
+    <!-- Interfaz principal del chat -->
     <div class="chat-interface hidden" id="chatInterface">
         <div id="chat-messages"></div>
         <div id="graph-visualization" class="graph-viz"></div>
@@ -436,10 +446,12 @@
     </div>
 
     <script>
+        // Variables globales para el manejo del ch
         let selectedModel = null;
         let sessionId = null;
         const chatMessages = document.getElementById('chat-messages');
     
+        // Función para seleccionar el modelo de AI
         function selectModel(model) {
             selectedModel = model;
             document.querySelectorAll('.model-option').forEach(option => {
@@ -448,6 +460,7 @@
             event.currentTarget.classList.add('selected');
         }
     
+        // Función para iniciar el chat y mostrar mensaje de bienvenida
         function startChat() {
             if (!selectedModel) {
                 alert('Please select a model first');
@@ -466,7 +479,8 @@
             chatInterface.classList.remove('hidden');
             chatInterface.style.display = 'flex';
         }
-    
+        
+         // Función para mostrar la respuesta del modelo en la interfaz
         async function displayModelResponse(data) {
             const botDiv = document.createElement('div');
             botDiv.className = 'message bot-message';
@@ -514,6 +528,7 @@
         chatMessages.scrollTop = chatMessages.scrollHeight;
     }
     
+        // Función principal para enviar mensajes al backend
         async function sendMessage() {
             const input = document.getElementById('user-input');
             const message = input.value.trim();
@@ -573,12 +588,14 @@
             }
         }
     
-        // Add event listener for Enter key
+        // Evento para enviar mensaje con la tecla Enter
         document.getElementById('user-input').addEventListener('keypress', function(e) {
             if (e.key === 'Enter') {
                 sendMessage();
             }
         });
+
+        // Función para visualizar grafos usando D3.js
         function visualizeGraph(data) {
         const width = document.getElementById('graph-visualization').clientWidth;
         const height = 300;
