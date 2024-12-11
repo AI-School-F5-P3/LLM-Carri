@@ -3,6 +3,7 @@
 <html>
 <head>
     <title>Chat</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="shortcut icon" type="image/x-icon" href="{% static 'images/favicon.ico' %}">
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700&family=Roboto:wght@300;400;500&display=swap" rel="stylesheet">
@@ -354,6 +355,36 @@
                 max-width: 250px; /* Even smaller for mobile */
             }
         }
+
+    .graph-viz {
+    height: 300px;
+    width: 100%;
+    background: var(--card-bg);
+    margin: 1rem;
+    border-radius: 8px;
+    border: 1px solid var(--primary-color);
+    display: none; /* Initially hidden */
+    opacity: 0;
+    transition: opacity 0.3s ease-in-out;
+    }A
+
+    .graph-viz.visible {
+        display: block;
+        opacity: 1;
+    }
+
+    .node circle {
+        fill: var(--primary-color);
+    }
+
+    .node text {
+        fill: var(--light-text);
+    }
+
+    .link {
+        stroke: var(--secondary-color);
+        stroke-opacity: 0.6;
+    }
     </style>
 </head>
 <body>
@@ -397,6 +428,7 @@
 
     <div class="chat-interface hidden" id="chatInterface">
         <div id="chat-messages"></div>
+        <div id="graph-visualization" class="graph-viz"></div>
         <div class="input-area">
             <input type="text" id="user-input" placeholder="Type your message...">
             <button class="send-button" onclick="sendMessage()">➤</button>
@@ -428,6 +460,11 @@
             welcomeMessage.className = 'message bot-message';
             welcomeMessage.textContent = `Welcome! You're now chatting with ${selectedModel}. How can I help you today?`;
             chatMessages.appendChild(welcomeMessage);
+
+            document.getElementById('modelSelection').style.display = 'none';
+            const chatInterface = document.getElementById('chatInterface');
+            chatInterface.classList.remove('hidden');
+            chatInterface.style.display = 'flex';
         }
     
         async function displayModelResponse(data) {
@@ -435,40 +472,47 @@
             botDiv.className = 'message bot-message';
             
             try {
-                const textDiv = document.createElement('div');
-                textDiv.className = 'message-text';
-                
-                const content = typeof data.response === 'string' ? 
-                    JSON.parse(data.response) : data.response;
-                
-                textDiv.innerHTML = content.text.replace(/\n/g, '<br>');
-                botDiv.appendChild(textDiv);
-                
-                if (content.hashtags) {
-                    const hashtagDiv = document.createElement('div');
-                    hashtagDiv.className = 'message-hashtags';
-                    hashtagDiv.textContent = content.hashtags;
-                    botDiv.appendChild(hashtagDiv);
-                }
-                
-                if (content.image_url) {
-                    const imgDiv = document.createElement('div');
-                    imgDiv.className = 'message-image-container';
-                    const img = document.createElement('img');
-                    img.src = content.image_url;
-                    img.className = 'message-image';
-                    img.alt = 'Generated content image';
-                    imgDiv.appendChild(img);
-                    botDiv.appendChild(imgDiv);
-                }
-                
-            } catch (error) {
-                botDiv.textContent = data.response;
+            const content = typeof data.response === 'string' ? 
+                JSON.parse(data.response) : data.response;
+            
+            const textDiv = document.createElement('div');
+            textDiv.className = 'message-text';
+            textDiv.innerHTML = content.text.replace(/\n/g, '<br>');
+            botDiv.appendChild(textDiv);
+            
+            // Clear previous graph
+            document.getElementById('graph-visualization').innerHTML = '';
+            
+            // Render graph if graph data exists
+            if (content.graph_data) {
+                visualizeGraph(content.graph_data);
             }
             
-            chatMessages.appendChild(botDiv);
-            chatMessages.scrollTop = chatMessages.scrollHeight;
+            if (content.hashtags) {
+                const hashtagDiv = document.createElement('div');
+                hashtagDiv.className = 'message-hashtags';
+                hashtagDiv.textContent = content.hashtags;
+                botDiv.appendChild(hashtagDiv);
+            }
+            
+            if (content.image_url) {
+                const imgDiv = document.createElement('div');
+                imgDiv.className = 'message-image-container';
+                const img = document.createElement('img');
+                img.src = content.image_url;
+                img.className = 'message-image';
+                img.alt = 'Generated content image';
+                imgDiv.appendChild(img);
+                botDiv.appendChild(imgDiv);
+            }
+            
+        } catch (error) {
+            botDiv.textContent = data.response;
         }
+        
+        chatMessages.appendChild(botDiv);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
     
         async function sendMessage() {
             const input = document.getElementById('user-input');
@@ -535,6 +579,51 @@
                 sendMessage();
             }
         });
+        function visualizeGraph(data) {
+        const width = document.getElementById('graph-visualization').clientWidth;
+        const height = 300;
+
+        const svg = d3.select("#graph-visualization")
+            .append("svg")
+            .attr("width", width)
+            .attr("height", height);
+
+        const simulation = d3.forceSimulation(data.nodes)
+            .force("link", d3.forceLink(data.links))
+            .force("charge", d3.forceManyBody())
+            .force("center", d3.forceCenter(width / 2, height / 2));
+
+        const link = svg.append("g")
+            .selectAll("line")
+            .data(data.links)
+            .join("line")
+            .attr("class", "link");
+
+        const node = svg.append("g")
+            .selectAll(".node")
+            .data(data.nodes)
+            .join("g")
+            .attr("class", "node");
+
+        node.append("circle")
+            .attr("r", 5);
+
+        node.append("text")
+            .text(d => d.id)
+            .attr("x", 8)
+            .attr("y", 3);
+
+        simulation.on("tick", () => {
+            link
+                .attr("x1", d => d.source.x)
+                .attr("y1", d => d.source.y)
+                .attr("x2", d => d.target.x)
+                .attr("y2", d => d.target.y);
+
+            node
+                .attr("transform", d => `translate(${d.x},${d.y})`);
+        });
+    }
     </script>
 </body>
 </html>

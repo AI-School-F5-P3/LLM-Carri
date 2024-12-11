@@ -3,7 +3,7 @@ import json
 import time
 import os
 import yfinance as yf
-from typing import Dict, Union, Optional
+from typing import Dict, Union, Optional, List, Tuple
 from dotenv import load_dotenv
 from langchain_core.callbacks import BaseCallbackManager
 from langchain_community.chat_message_histories import ChatMessageHistory
@@ -15,8 +15,62 @@ from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 import arxiv
 from deep_translator import GoogleTranslator
+from rdflib import Graph, Namespace, Literal, URIRef
+from rdflib.namespace import RDF, RDFS, OWL
+import networkx as nx
 
 load_dotenv()
+
+class ContentValidator:
+    def __init__(self):
+        # Validation thresholds
+        self.MIN_WORDS = 20
+        self.MAX_WORDS = 1000
+        self.REQUIRED_SECTIONS = {
+            "twitter": ["text", "hashtags"],
+            "linkedin": ["text", "hashtags", "image_prompt"],
+            "instagram": ["text", "hashtags", "image_prompt"],
+            "facebook": ["text"],
+            "tiktok": ["text", "hashtags"],
+            "financial": ["text", "hashtags"],
+            "scientific": ["text", "hashtags"]
+        }
+        self.SECTION_MARKERS = {
+            "linkedin": ["🎯", "💡", "🤔"],
+            "financial": ["📊", "📈", "💡", "⚠️"],
+            "scientific": ["🔬", "🤔", "💡", "🌟", "📚"]
+        }
+
+    def validate_structure(self, content: dict, platform: str) -> Tuple[bool, str]:
+        # Check required sections
+        required = self.REQUIRED_SECTIONS.get(platform, ["text"])
+        missing = [field for field in required if field not in content]
+        if missing:
+            return False, f"Missing required fields: {', '.join(missing)}"
+
+        # Validate text length
+        word_count = len(content['text'].split())
+        if word_count < self.MIN_WORDS or word_count > self.MAX_WORDS:
+            return False, f"Text length ({word_count} words) outside allowed range"
+
+        # Check section markers
+        if platform in self.SECTION_MARKERS:
+            missing_markers = [
+                marker for marker in self.SECTION_MARKERS[platform]
+                if marker not in content['text']
+            ]
+            if missing_markers:
+                return False, f"Missing section markers: {', '.join(missing_markers)}"
+
+        return True, "Content validation passed"
+
+    def validate_content(self, content: str) -> bool:
+        # Check for common hallucination indicators
+        suspicious_patterns = [
+            "As an AI", "I am an AI", "I apologize",
+            "I cannot", "I don't have", "I'm unable"
+        ]
+        return not any(pattern in content for pattern in suspicious_patterns)
 
 class ScientificRAG:
     def __init__(self):
@@ -61,6 +115,105 @@ class ScientificRAG:
 
     def get_relevant_context(self, query: str, vectorstore: FAISS, k: int = 3):
         return vectorstore.similarity_search(query, k=k)
+    
+class KnowledgeGraph:
+    def __init__(self):
+        self.g = Graph()
+        # Define namespaces
+        self.schema = Namespace("http://schema.org/")
+        self.custom = Namespace("http://custom.org/")
+        self.g.bind("schema", self.schema)
+        self.g.bind("custom", self.custom)
+        
+    def add_scientific_concept(self, concept: str, definition: str, related_concepts: List[str]):
+        concept_uri = URIRef(self.custom[concept.replace(" ", "_")])
+        self.g.add((concept_uri, RDF.type, self.schema.Thing))
+        self.g.add((concept_uri, self.schema.name, Literal(concept)))
+        self.g.add((concept_uri, self.schema.description, Literal(definition)))
+        
+        for related in related_concepts:
+            related_uri = URIRef(self.custom[related.replace(" ", "_")])
+            self.g.add((concept_uri, self.schema.relatedTo, related_uri))
+    
+    def query_related_concepts(self, concept: str) -> List[Tuple[str, str]]:
+        concept_uri = URIRef(self.custom[concept.replace(" ", "_")])
+        results = []
+        
+        query = """
+        SELECT ?related ?definition
+        WHERE {
+            ?subject schema:relatedTo ?related .
+            ?related schema:description ?definition .
+        }
+        """
+        
+        for row in self.g.query(query, initBindings={'subject': concept_uri}):
+            results.append((str(row.related), str(row.definition)))
+        return results
+
+class EnhancedScientificRAG:
+    def __init__(self):
+        self.embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+        self.kg = Graph()
+        self.graph = nx.Graph()
+        self._init_knowledge_base()
+        
+    def _init_knowledge_base(self):
+        # Core scientific concepts
+        concepts = [
+            ("quantum_mechanics", "Theory describing nature at atomic scale", 
+             ["wave_function", "uncertainty_principle"]),
+            ("wave_function", "Mathematical description of quantum state", 
+             ["quantum_mechanics", "probability_amplitude"]),
+            ("uncertainty_principle", "Fundamental limit of precision in measurements",
+             ["quantum_mechanics", "wave_function"])
+        ]
+        
+        for concept, definition, related in concepts:
+            self.graph.add_node(concept, definition=definition)
+            for rel in related:
+                self.graph.add_edge(concept, rel)
+
+    def fetch_papers(self, query: str, max_results: int = 3):
+        client = arxiv.Client()
+        search = arxiv.Search(query=query, max_results=max_results)
+        return [result for result in client.results(search)]
+
+    def get_context(self, query: str) -> Dict:
+        # Get relevant papers
+        papers = self.fetch_papers(query)
+        papers_context = []
+        for paper in papers:
+            papers_context.append({
+                'title': paper.title,
+                'summary': paper.summary[:500],
+                'url': paper.entry_id
+            })
+
+        # Get graph context
+        concepts = [word.lower() for word in query.split() 
+                   if word.lower() in self.graph.nodes]
+        
+        graph_data = None
+        if concepts:
+            relevant_nodes = set(concepts)
+            for concept in concepts:
+                relevant_nodes.update(self.graph.neighbors(concept))
+            
+            subgraph = self.graph.subgraph(relevant_nodes)
+            graph_data = {
+                "nodes": [{
+                    "id": node,
+                    "definition": self.graph.nodes[node].get("definition", "")
+                } for node in subgraph.nodes()],
+                "links": [{"source": u, "target": v} 
+                         for u, v in subgraph.edges()]
+            }
+
+        return {
+            "papers": papers_context,
+            "graph_data": graph_data
+        }
 
 def translate_to_english(text: str) -> str:
     try:
@@ -148,9 +301,33 @@ def detect_platform(prompt: str) -> str:
     
     return "general"
 
+def get_scientific_context(rag: EnhancedScientificRAG, prompt: str) -> Dict:
+    """Get scientific context using RAG system"""
+    try:
+        # Get initial context
+        context = rag.get_context(prompt)
+        
+        # Format paper contexts
+        papers_context = "\n".join([
+            f"Title: {paper['title']}\n"
+            f"Summary: {paper['summary']}\n"
+            f"Source: {paper['url']}\n"
+            for paper in context['papers']
+        ])
+
+        return {
+            "text_context": papers_context if papers_context else "",
+            "graph_data": context['graph_data']
+        }
+    except Exception as e:
+        print(f"Scientific RAG Error: {str(e)}")
+        return {"text_context": "", "graph_data": None}
+
 def generate_with_model(model: str, prompt: str, history: list = None, profile_data = None, user = None, session = None) -> str:
+    validator = ContentValidator()
     tracker = ChatModelTracker()
     url = "http://localhost:11434/api/generate"
+    max_retries = 3
     
     history_text = ""
     if history:
@@ -340,70 +517,79 @@ Please continue the conversation while maintaining context from previous message
         full_prompt += f"\n\nCurrent Market Data:\n{json.dumps(market_data, indent=2)}"
     
     if platform == "scientific":
-        rag = ScientificRAG()
-        scientific_context = ""
+        rag = EnhancedScientificRAG()
+        scientific_data = get_scientific_context(rag, prompt)
         
-        try:
-            papers = rag.fetch_papers(prompt)
-            if papers:
-                vectorstore = rag.create_knowledge_base(papers)
-                context = rag.get_relevant_context(prompt, vectorstore)
-                scientific_context = "\n\nScientific Context:\n"
-                for doc in context:
-                    scientific_context += f"{doc.page_content}\n\n"
-                
-                full_prompt += scientific_context
-                full_prompt += "\nExplain this in simple terms for a general audience."
-        except Exception as e:
-            print(f"RAG Error: {str(e)}")
+        if scientific_data["text_context"]:
+            full_prompt += f"\n\nScientific Context:\n{scientific_data['text_context']}"
+            full_prompt += "\nExplain this in simple terms for a general audience."
 
-    payload = {
-        "model": model,
-        "prompt": full_prompt,
-        "stream": False
-    }
-    
-    try:
-        response = requests.post(url, json=payload)
-        response.raise_for_status()
-        content =  response.json()['response']
-    
+    for attempt in range(max_retries):
         try:
-            parsed_content = json.loads(content)
-            
-            # Search for image based on image_prompt or text content
-            image_query = parsed_content.get('image_prompt') or parsed_content.get('text').split('\n')[0]
-            image_url = search_pexels_image(image_query)
-            
-            response_data = {
-                "text": parsed_content['text'],
-                "hashtags": parsed_content.get('hashtags', ''),
-                "image_url": image_url
+            payload = {
+                "model": model,
+                "prompt": full_prompt,
+                "stream": False
             }
-                
-        except json.JSONDecodeError:
-            # If response isn't JSON, treat as plain text
-            image_url = search_pexels_image(content[:100])  # Use first 100 chars as query
-            response_data = {
-                "text": content,
-                "image_url": image_url
-            }
-        
-        if user and session:
-            tracker.track_conversation(
-                user=user,
-                session=session,
-                prompt=prompt,
-                response=json.dumps(response_data),
-                model=model,
-                platform=platform
-            )
             
-        return response_data
+            response = requests.post(url, json=payload)
+            response.raise_for_status()
+            content = response.json()['response']
                 
-    except requests.exceptions.RequestException as e:
-        return {"error": str(e)}
-    
+            try:
+                parsed_content = json.loads(content)
+                
+                # Search for image
+                image_query = parsed_content.get('image_prompt') or parsed_content.get('text').split('\n')[0]
+                image_url = search_pexels_image(image_query)
+                
+                response_data = {
+                    "text": parsed_content['text'],
+                    "hashtags": parsed_content.get('hashtags', ''),
+                    "image_url": image_url
+                }
+                
+                # Validate response
+                is_valid_structure, message = validator.validate_structure(response_data, platform)
+                is_valid_content = validator.validate_content(response_data['text'])
+                    
+                if is_valid_structure and is_valid_content:
+                    # Track successful generation
+                    if user and session:
+                        tracker.track_conversation(
+                            user=user,
+                            session=session,
+                            prompt=prompt,
+                            response=json.dumps(response_data),
+                            model=model,
+                            platform=platform
+                        )
+                    return response_data
+                
+                print(f"Attempt {attempt + 1} failed validation: {message}")
+                
+            except json.JSONDecodeError:
+                # Handle non-JSON responses
+                image_url = search_pexels_image(content[:100])
+                response_data = {
+                    "text": content,
+                    "hashtags": "",
+                    "image_url": image_url
+                }
+                
+                if validator.validate_content(content):
+                    return response_data
+                    
+        except Exception as e:
+            print(f"Generation attempt {attempt + 1} failed: {str(e)}")
+                
+        # Return fallback response if all attempts fail
+    return {
+        "text": "I apologize, but I couldn't generate valid content. Please try rephrasing your request.",
+        "hashtags": "",
+        "image_url": None
+    }
+
 
 class ChatModelTracker:
     def __init__(self):
