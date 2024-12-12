@@ -1,66 +1,158 @@
-import requests
-import json
-import time
-import os
-import yfinance as yf
-from typing import Dict, Union, Optional
-from dotenv import load_dotenv
-from langchain_core.callbacks import BaseCallbackManager
-from langchain_community.chat_message_histories import ChatMessageHistory
-from langchain_core.messages import HumanMessage, AIMessage
-from .models import ConversationTracker, ScientificArticle
-from datetime import datetime, timedelta
-from langchain_community.vectorstores import FAISS
-from langchain_community.embeddings import HuggingFaceEmbeddings
-from langchain.text_splitter import RecursiveCharacterTextSplitter
 import arxiv
+import json
+import networkx as nx
+import os
+import requests
+import time
+import yfinance as yf
+
+from datetime import datetime
 from deep_translator import GoogleTranslator
+from dotenv import load_dotenv
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_community.chat_message_histories import ChatMessageHistory
+from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_community.vectorstores import FAISS
+from rdflib import Graph, Namespace, Literal, URIRef
+from rdflib.namespace import RDF, RDFS, OWL
+from typing import Dict, Union, Optional, List, Tuple
+
+from .models import ConversationTracker, ScientificArticle
 
 load_dotenv()
 
-class ScientificRAG:
+class ContentValidator:
     def __init__(self):
+        # Umbrales de validación para el contenido
+        self.MIN_WORDS = 20
+        self.MAX_WORDS = 1000
+        # Define las secciones requeridas para cada plataforma
+        self.REQUIRED_SECTIONS = {
+            "twitter": ["text", "hashtags"],
+            "linkedin": ["text", "hashtags", "image_prompt"],
+            "instagram": ["text", "hashtags", "image_prompt"],
+            "facebook": ["text"],
+            "tiktok": ["text", "hashtags"],
+            "financial": ["text", "hashtags"],
+            "scientific": ["text", "hashtags"]
+        }
+        # Marcadores específicos que deben aparecer en el contenido según la plataforma
+        self.SECTION_MARKERS = {
+            "linkedin": ["🎯", "💡", "🤔"],
+            "financial": ["📊", "📈", "💡", "⚠️"],
+            "scientific": ["🔬", "🤔", "💡", "🌟", "📚"]
+        }
+
+    def validate_structure(self, content: dict, platform: str) -> Tuple[bool, str]:
+        # Verifica que el contenido tenga todas las secciones requeridas
+        required = self.REQUIRED_SECTIONS.get(platform, ["text"])
+        missing = [field for field in required if field not in content]
+        if missing:
+            return False, f"Missing required fields: {', '.join(missing)}"
+
+        # Valida que el texto tenga una longitud apropiada
+        word_count = len(content['text'].split())
+        if word_count < self.MIN_WORDS or word_count > self.MAX_WORDS:
+            return False, f"Text length ({word_count} words) outside allowed range"
+
+        # Verifica que el contenido incluya los marcadores de sección necesarios
+        if platform in self.SECTION_MARKERS:
+            missing_markers = [
+                marker for marker in self.SECTION_MARKERS[platform]
+                if marker not in content['text']
+            ]
+            if missing_markers:
+                return False, f"Missing section markers: {', '.join(missing_markers)}"
+
+        return True, "Content validation passed"
+
+    def validate_content(self, content: str) -> bool:
+        # Verifica si el contenido contiene patrones sospechosos de alucinaciones del modelo
+        suspicious_patterns = [
+            "As an AI", "I am an AI", "I apologize",
+            "I cannot", "I don't have", "I'm unable"
+        ]
+        return not any(pattern in content for pattern in suspicious_patterns)
+
+class EnhancedScientificRAG:
+    def __init__(self):
+        # Inicializa el modelo de embeddings para procesar texto científico
         self.embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
-        self.text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=500,
-            chunk_overlap=50
-        )
+        # Crea un grafo RDF para almacenar relaciones semánticas
+        self.kg = Graph()
+        # Crea un grafo NetworkX para visualización y análisis
+        self.graph = nx.Graph()
+        # Inicializa la base de conocimientos con conceptos científicos
+        self._init_knowledge_base()
         
-    def fetch_papers(self, query: str, max_results: int = 5):
+    def _init_knowledge_base(self):
+        # Define conceptos científicos fundamentales y sus relaciones
+        # Cada entrada contiene: (concepto, definición, conceptos relacionados)
+        concepts = [
+            ("quantum_mechanics", "Theory describing nature at atomic scale", 
+             ["wave_function", "uncertainty_principle"]),
+            ("wave_function", "Mathematical description of quantum state", 
+             ["quantum_mechanics", "probability_amplitude"]),
+            ("uncertainty_principle", "Fundamental limit of precision in measurements",
+             ["quantum_mechanics", "wave_function"])
+        ]
+        
+        # Construye el grafo añadiendo nodos y aristas
+        for concept, definition, related in concepts:
+            # Añade el nodo con su definición
+            self.graph.add_node(concept, definition=definition)
+            # Crea conexiones con conceptos relacionados
+            for rel in related:
+                self.graph.add_edge(concept, rel)
+
+    def fetch_papers(self, query: str, max_results: int = 3):
+        # Inicializa el cliente de ArXiv
         client = arxiv.Client()
-        search = arxiv.Search(
-            query=query,
-            max_results=max_results,
-            sort_by=arxiv.SortCriterion.Relevance
-        )
-        
-        papers = []
-        for result in client.results(search):
-            paper = ScientificArticle.objects.get_or_create(
-                arxiv_id=result.entry_id,
-                defaults={
-                    'title': result.title,
-                    'abstract': result.summary,
-                    'authors': [author.name for author in result.authors],
-                    'categories': result.categories
-                }
-            )[0]
-            papers.append(paper)
-        return papers
+        # Realiza la búsqueda en ArXiv con los parámetros especificados
+        search = arxiv.Search(query=query, max_results=max_results)
+        # Retorna los resultados como una lista
+        return [result for result in client.results(search)]
 
-    def create_knowledge_base(self, papers):
-        texts = []
+    def get_context(self, query: str) -> Dict:
+        # Obtiene artículos relevantes de ArXiv
+        papers = self.fetch_papers(query)
+        papers_context = []
+        # Procesa cada artículo para extraer información relevante
         for paper in papers:
-            texts.extend([
-                f"Title: {paper.title}\n",
-                f"Abstract: {paper.abstract}\n"
-            ])
-        
-        chunks = self.text_splitter.split_text('\n'.join(texts))
-        return FAISS.from_texts(chunks, self.embeddings)
+            papers_context.append({
+                'title': paper.title,
+                'summary': paper.summary[:500],  # Limita el resumen a 500 caracteres
+                'url': paper.entry_id
+            })
 
-    def get_relevant_context(self, query: str, vectorstore: FAISS, k: int = 3):
-        return vectorstore.similarity_search(query, k=k)
+        # Identifica conceptos relevantes en la consulta que existen en el grafo
+        concepts = [word.lower() for word in query.split() 
+                   if word.lower() in self.graph.nodes]
+        
+        graph_data = None
+        if concepts:
+            # Construye un subgrafo con los conceptos relevantes y sus vecinos
+            relevant_nodes = set(concepts)
+            for concept in concepts:
+                relevant_nodes.update(self.graph.neighbors(concept))
+            
+            # Crea un subgrafo para visualización
+            subgraph = self.graph.subgraph(relevant_nodes)
+            # Formatea los datos del grafo para la respuesta
+            graph_data = {
+                "nodes": [{
+                    "id": node,
+                    "definition": self.graph.nodes[node].get("definition", "")
+                } for node in subgraph.nodes()],
+                "links": [{"source": u, "target": v} 
+                         for u, v in subgraph.edges()]
+            }
+
+        # Retorna el contexto completo con artículos y datos del grafo
+        return {
+            "papers": papers_context,
+            "graph_data": graph_data
+        }
 
 def translate_to_english(text: str) -> str:
     try:
@@ -97,7 +189,7 @@ def search_pexels_image(query: str) -> Optional[str]:
         return None
 
 def get_stock_data(symbol: str) -> Dict:
-    """Fetch stock market data using yfinance"""
+    # Extraemos informacion financiera con yfinance
     try:
         stock = yf.Ticker(symbol)
         info = stock.info
@@ -118,7 +210,7 @@ def get_stock_data(symbol: str) -> Dict:
 
 
 def detect_platform(prompt: str) -> str:
-    # Platform keywords dictionary
+    # Diccionario que contiene palabras clave asociadas a cada plataforma para identificación
     PLATFORM_KEYWORDS = {
         "twitter": ["twitter", "tweet", "x platform", "x post"],
         "instagram": ["instagram", "insta", "ig", "reels"],
@@ -132,32 +224,67 @@ def detect_platform(prompt: str) -> str:
         "papers", "arxiv", "academic", "explain"]
     }
     
-    # Convert prompt to lowercase for case-insensitive matching
+    # Convertimos el prompt a minúsculas para hacer la comparación sin distinción de mayúsculas/minúsculas
     prompt_lower = prompt.lower()
 
+    # Verificamos si es contenido financiero buscando símbolos de acciones con formato $SYMBOL
     if any(keyword in prompt_lower for keyword in PLATFORM_KEYWORDS["financial"]):
-        # Extract stock symbols (assumed to be in $SYMBOL format)
+        # Extraemos símbolos de acciones que comienzan con $
         symbols = [word.strip('$') for word in prompt.split() if word.startswith('$')]
         if symbols:
             return "financial"
     
-    # Check for platform mentions
+    # Iteramos sobre cada plataforma y sus palabras clave para encontrar coincidencias
+    # Si encontramos una coincidencia, retornamos esa plataforma
     for platform, keywords in PLATFORM_KEYWORDS.items():
         if any(keyword in prompt_lower for keyword in keywords):
             return platform
     
+    # Si no encontramos coincidencias, retornamos "general" como plataforma por defecto
     return "general"
 
+def get_scientific_context(rag: EnhancedScientificRAG, prompt: str) -> Dict:
+    """Obtiene contexto científico usando el sistema RAG (Retrieval Augmented Generation)"""
+    try:
+        # Obtiene el contexto inicial usando el sistema RAG
+        context = rag.get_context(prompt)
+        
+        # Formatea la información de los artículos científicos en un texto estructurado
+        # Incluye título, resumen y fuente de cada artículo
+        papers_context = "\n".join([
+            f"Title: {paper['title']}\n"
+            f"Summary: {paper['summary']}\n"
+            f"Source: {paper['url']}\n"
+            for paper in context['papers']
+        ])
+
+        # Retorna un diccionario con el contexto formateado y los datos del grafo
+        # Si no hay artículos, retorna una cadena vacía como contexto
+        return {
+            "text_context": papers_context if papers_context else "",
+            "graph_data": context['graph_data']
+        }
+    except Exception as e:
+        # En caso de error, imprime el mensaje y retorna un contexto vacío
+        print(f"Scientific RAG Error: {str(e)}")
+        return {"text_context": "", "graph_data": None}
+
 def generate_with_model(model: str, prompt: str, history: list = None, profile_data = None, user = None, session = None) -> str:
+    # Inicializa el validador de contenido y el rastreador de chat
+    validator = ContentValidator()
     tracker = ChatModelTracker()
-    url = "http://localhost:11434/api/generate"
+    ollama_host = os.getenv('OLLAMA_HOST', 'http://localhost:11434')
+    url = f"{ollama_host}/api/generate"
+    max_retries = 3
     
+    # Procesa el historial de conversación si existe
     history_text = ""
     if history:
         history_text = "\n\nPrevious conversation:\n"
         for msg in history:
             history_text += f"{msg['role']}: {msg['content']}\n"
 
+    # Construye el contexto del perfil de la empresa si está disponible
     profile_context = ""
     if profile_data:
         profile_context = f"""
@@ -330,87 +457,108 @@ Current request: {prompt}
 
 Please continue the conversation while maintaining context from previous messages."""
     
+    # Procesa datos financieros si es contenido relacionado con el mercado
     if platform == "financial":
         symbols = [word.strip('$') for word in prompt.split() if word.startswith('$')]
         market_data = {}
         for symbol in symbols:
             market_data[symbol] = get_stock_data(symbol)
         
-        # Add market data to prompt
         full_prompt += f"\n\nCurrent Market Data:\n{json.dumps(market_data, indent=2)}"
     
+    # Procesa datos científicos si es contenido relacionado con ciencia
     if platform == "scientific":
-        rag = ScientificRAG()
-        scientific_context = ""
+        rag = EnhancedScientificRAG()
+        scientific_data = get_scientific_context(rag, prompt)
         
-        try:
-            papers = rag.fetch_papers(prompt)
-            if papers:
-                vectorstore = rag.create_knowledge_base(papers)
-                context = rag.get_relevant_context(prompt, vectorstore)
-                scientific_context = "\n\nScientific Context:\n"
-                for doc in context:
-                    scientific_context += f"{doc.page_content}\n\n"
-                
-                full_prompt += scientific_context
-                full_prompt += "\nExplain this in simple terms for a general audience."
-        except Exception as e:
-            print(f"RAG Error: {str(e)}")
+        if scientific_data["text_context"]:
+            full_prompt += f"\n\nScientific Context:\n{scientific_data['text_context']}"
+            full_prompt += "\nExplain this in simple terms for a general audience."
 
-    payload = {
-        "model": model,
-        "prompt": full_prompt,
-        "stream": False
-    }
-    
-    try:
-        response = requests.post(url, json=payload)
-        response.raise_for_status()
-        content =  response.json()['response']
-    
+    # Implementa sistema de reintentos para generación de contenido
+    for attempt in range(max_retries):
         try:
-            parsed_content = json.loads(content)
-            
-            # Search for image based on image_prompt or text content
-            image_query = parsed_content.get('image_prompt') or parsed_content.get('text').split('\n')[0]
-            image_url = search_pexels_image(image_query)
-            
-            response_data = {
-                "text": parsed_content['text'],
-                "hashtags": parsed_content.get('hashtags', ''),
-                "image_url": image_url
+            # Configura y envía la solicitud al modelo
+            payload = {
+                "model": model,
+                "prompt": full_prompt,
+                "stream": False
             }
-                
-        except json.JSONDecodeError:
-            # If response isn't JSON, treat as plain text
-            image_url = search_pexels_image(content[:100])  # Use first 100 chars as query
-            response_data = {
-                "text": content,
-                "image_url": image_url
-            }
-        
-        if user and session:
-            tracker.track_conversation(
-                user=user,
-                session=session,
-                prompt=prompt,
-                response=json.dumps(response_data),
-                model=model,
-                platform=platform
-            )
             
-        return response_data
+            response = requests.post(url, json=payload)
+            response.raise_for_status()
+            content = response.json()['response']
                 
-    except requests.exceptions.RequestException as e:
-        return {"error": str(e)}
-    
+            try:
+                # Intenta parsear la respuesta como JSON
+                parsed_content = json.loads(content)
+                
+                # Busca una imagen relacionada con el contenido
+                image_query = parsed_content.get('image_prompt') or parsed_content.get('text').split('\n')[0]
+                image_url = search_pexels_image(image_query)
+                
+                # Estructura la respuesta final
+                response_data = {
+                    "text": parsed_content['text'],
+                    "hashtags": parsed_content.get('hashtags', ''),
+                    "image_url": image_url
+                }
+                
+                # Valida la estructura y contenido de la respuesta
+                is_valid_structure, message = validator.validate_structure(response_data, platform)
+                is_valid_content = validator.validate_content(response_data['text'])
+                    
+                if is_valid_structure and is_valid_content:
+                    # Registra la generación exitosa si hay usuario y sesión
+                    if user and session:
+                        tracker.track_conversation(
+                            user=user,
+                            session=session,
+                            prompt=prompt,
+                            response=json.dumps(response_data),
+                            model=model,
+                            platform=platform
+                        )
+                    return response_data
+                
+                print(f"Attempt {attempt + 1} failed validation: {message}")
+                
+            except json.JSONDecodeError:
+                # Maneja respuestas que no son JSON
+                image_url = search_pexels_image(content[:100])
+                response_data = {
+                    "text": content,
+                    "hashtags": "",
+                    "image_url": image_url
+                }
+                
+                if validator.validate_content(content):
+                    return response_data
+                    
+        except Exception as e:
+            print(f"Generation attempt {attempt + 1} failed: {str(e)}")
+                
+    # Retorna respuesta por defecto si todos los intentos fallan
+    return {
+        "text": "I apologize, but I couldn't generate valid content. Please try rephrasing your request.",
+        "hashtags": "",
+        "image_url": None
+    }
+
 
 class ChatModelTracker:
     def __init__(self):
+        # Historial de mensajes para mantener el contexto de la conversación
         self.message_history = ChatMessageHistory()
+        # Variable para rastrear el tiempo de inicio de la generación de respuestas
         self.start_time = None
     
     def _track_metrics(self, **kwargs):
+        # Calcula y retorna métricas importantes de la conversación:
+        # - timestamp: momento exacto de la generación
+        # - generation_time: tiempo total de generación
+        # - prompt_tokens: cantidad aproximada de tokens en el prompt
+        # - response_tokens: cantidad aproximada de tokens en la respuesta
         metrics = {
             'timestamp': time.time(),
             'generation_time': time.time() - self.start_time if self.start_time else 0,
@@ -420,9 +568,16 @@ class ChatModelTracker:
         return metrics
 
     def track_conversation(self, user, session, prompt, response, model, platform):
+        # Inicia el cronómetro para medir el tiempo de generación
         self.start_time = time.time()
+        # Obtiene las métricas de la conversación actual
         metrics = self._track_metrics(prompt=prompt, response=response)
         
+        # Guarda la conversación en la base de datos incluyendo:
+        # - Información del usuario y sesión
+        # - Prompt y respuesta
+        # - Modelo utilizado y plataforma
+        # - Métricas calculadas
         ConversationTracker.objects.create(
             user=user,
             session=session,
@@ -433,6 +588,7 @@ class ChatModelTracker:
             metrics=metrics
         )
         
+        # Actualiza el historial de mensajes para mantener el contexto
         self.message_history.add_user_message(prompt)
         self.message_history.add_ai_message(response)
         
